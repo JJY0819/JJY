@@ -216,8 +216,18 @@ export async function getQuoteData(ticker: string): Promise<QuoteData | null> {
   }
 
   // ── 미국 주식 (또는 fallback): Yahoo Finance ──────────────────
+  // 국내 종목은 반드시 .KS/.KQ 접미사가 붙은 티커로 조회해야 한다
+  // (raw ticker "005930"만으로는 Yahoo가 종목을 못 찾는다).
+  // 코스닥 종목인데 코스피(.KS)로 잘못 시도했을 경우를 대비해 .KQ로 한 번 더 시도한다.
   try {
-    const [q, extra] = await Promise.all([yf.quote(ticker), getYahooFundamentals(ticker)]);
+    let resolvedTicker = yahooTicker;
+    let q = await yf.quote(resolvedTicker).catch(() => null);
+    if (!q && code) {
+      resolvedTicker = `${code}.KQ`;
+      q = await yf.quote(resolvedTicker).catch(() => null);
+    }
+    if (!q) return null;
+    const extra = await getYahooFundamentals(resolvedTicker);
 
     return {
       symbol: q.symbol,
