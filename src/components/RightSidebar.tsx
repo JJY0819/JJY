@@ -197,7 +197,7 @@ export default function RightSidebar({ open, onClose }: Props) {
 
           {tab === "favorites" && (
             favorites.length === 0 ? (
-              <p className="text-gray-400 text-sm text-center py-10">하트를 눌러 관심종목에 담아보세요</p>
+              <p className="text-gray-400 text-sm text-center py-10">별을 눌러 관심종목에 담아보세요</p>
             ) : (
               favorites.map((s) => (
                 <StockRow
@@ -209,11 +209,11 @@ export default function RightSidebar({ open, onClose }: Props) {
                       <QuoteBadge q={quotes[s.symbol]} />
                       <span
                         onClick={(e) => { e.stopPropagation(); toggleFavorite(s); }}
-                        className="text-red-500 text-lg px-1"
+                        className="text-amber-400 text-lg px-1"
                         role="button"
                         aria-label="관심종목 삭제"
                       >
-                        ♥
+                        ★
                       </span>
                     </div>
                   }
