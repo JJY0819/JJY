@@ -29,10 +29,18 @@ export async function GET() {
   const results = await Promise.allSettled(
     PAIRS.map(async ({ symbol, label, unit, decimals, prefix }): Promise<RateItem> => {
       const q = await yf.quote(symbol);
+      const price = q.regularMarketPrice ?? 0;
+      const prevClose = q.regularMarketPreviousClose;
+      // Yahoo가 일부 종목(예: ^TNX)에서 regularMarketChangePercent를 잘못 계산해 내려주는
+      // 경우가 있어, 전일종가가 있으면 가격 기준으로 직접 계산한다.
+      const changePercent =
+        prevClose != null && prevClose !== 0
+          ? ((price - prevClose) / prevClose) * 100
+          : q.regularMarketChangePercent ?? 0;
       return {
         label,
-        rate: (q.regularMarketPrice ?? 0) * unit,
-        changePercent: q.regularMarketChangePercent ?? 0,
+        rate: price * unit,
+        changePercent,
         decimals,
         prefix,
       };
