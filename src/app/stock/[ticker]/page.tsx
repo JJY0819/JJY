@@ -12,76 +12,13 @@ import KeyMetricsCard from "@/components/KeyMetricsCard";
 import RecordRecentView from "@/components/RecordRecentView";
 import { CurrencyProvider } from "@/contexts/CurrencyContext";
 import { isKoreanStock } from "@/lib/naver";
-
-interface QuoteData {
-  symbol: string;
-  name: string;
-  price: number;
-  change: number;
-  changePercent: number;
-  previousClose?: number | null;
-  marketCap: number | null;
-  sharesOutstanding: number | null;
-  week52High: number | null;
-  week52Low: number | null;
-  volume: number | null;
-  currency: string;
-  exchange: string;
-  marketState: string;
-  regularMarketTime?: string | null;
-  preMarketPrice?: number | null;
-  preMarketChangePercent?: number | null;
-  postMarketPrice?: number | null;
-  postMarketChangePercent?: number | null;
-  per?: string | number | null;
-  forwardPer?: string | number | null;
-  pbr?: string | number | null;
-  eps?: string | number | null;
-  dividendYield?: number | null;
-  targetMeanPrice?: number | null;
-  roe?: number | null;
-  netMargin?: number | null;
-  operatingMargin?: number | null;
-  revenueGrowth?: number | null;
-  industry?: string | null;
-  baseDate?: string | null;
-}
-
-interface ProfileData {
-  industry: string | null;
-  sectorKo: string | null;
-}
-
-// 로컬에서는 localhost, Vercel에 배포되면 VERCEL_URL(배포 도메인)이 자동으로 잡힌다.
-// NEXT_PUBLIC_BASE_URL을 따로 설정했다면 그게 최우선.
-const BASE_URL =
-  process.env.NEXT_PUBLIC_BASE_URL ??
-  (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
-
-async function getQuote(ticker: string): Promise<QuoteData | null> {
-  try {
-    const res = await fetch(`${BASE_URL}/api/quote/${encodeURIComponent(ticker)}`, { cache: "no-store" });
-    if (!res.ok) return null;
-    return res.json();
-  } catch {
-    return null;
-  }
-}
-
-async function getProfile(ticker: string): Promise<ProfileData | null> {
-  try {
-    const res = await fetch(`${BASE_URL}/api/profile/${encodeURIComponent(ticker)}`, { cache: "no-store" });
-    if (!res.ok) return null;
-    return res.json();
-  } catch {
-    return null;
-  }
-}
+import { getQuoteData } from "@/lib/quote";
+import { getProfileData } from "@/lib/profile";
 
 export default async function StockPage(props: PageProps<"/stock/[ticker]">) {
   const { ticker } = await props.params;
   const decodedTicker = decodeURIComponent(ticker);
-  const [quote, profile] = await Promise.all([getQuote(decodedTicker), getProfile(decodedTicker)]);
+  const [quote, profile] = await Promise.all([getQuoteData(decodedTicker), getProfileData(decodedTicker)]);
   const isKorean = isKoreanStock(decodedTicker);
   const baseCurrency = quote?.currency === "USD" ? "USD" : "KRW";
 
@@ -122,7 +59,7 @@ export default async function StockPage(props: PageProps<"/stock/[ticker]">) {
                   postMarketPrice: quote.postMarketPrice,
                   postMarketChangePercent: quote.postMarketChangePercent,
                   regularMarketTime: quote.regularMarketTime,
-                  industry: profile?.industry ?? quote.industry ?? null,
+                  industry: profile?.industry ?? null,
                   sectorKo: profile?.sectorKo ?? null,
                 }}
               />
