@@ -52,12 +52,15 @@ interface ProfileData {
   sectorKo: string | null;
 }
 
+// 로컬에서는 localhost, Vercel에 배포되면 VERCEL_URL(배포 도메인)이 자동으로 잡힌다.
+// NEXT_PUBLIC_BASE_URL을 따로 설정했다면 그게 최우선.
+const BASE_URL =
+  process.env.NEXT_PUBLIC_BASE_URL ??
+  (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
+
 async function getQuote(ticker: string): Promise<QuoteData | null> {
   try {
-    const res = await fetch(
-      `${process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"}/api/quote/${encodeURIComponent(ticker)}`,
-      { cache: "no-store" }
-    );
+    const res = await fetch(`${BASE_URL}/api/quote/${encodeURIComponent(ticker)}`, { cache: "no-store" });
     if (!res.ok) return null;
     return res.json();
   } catch {
@@ -67,10 +70,7 @@ async function getQuote(ticker: string): Promise<QuoteData | null> {
 
 async function getProfile(ticker: string): Promise<ProfileData | null> {
   try {
-    const res = await fetch(
-      `${process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"}/api/profile/${encodeURIComponent(ticker)}`,
-      { cache: "no-store" }
-    );
+    const res = await fetch(`${BASE_URL}/api/profile/${encodeURIComponent(ticker)}`, { cache: "no-store" });
     if (!res.ok) return null;
     return res.json();
   } catch {
