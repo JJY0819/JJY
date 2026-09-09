@@ -42,3 +42,6 @@ next-env.d.ts
 
 # temp data dumps
 *.tmp/
+
+.vercel
+.env*
