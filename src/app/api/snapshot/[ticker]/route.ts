@@ -3,10 +3,15 @@ import { getNaverCode } from "@/lib/naver";
 
 const yf = new YahooFinance();
 
-export async function GET(_req: Request, ctx: RouteContext<"/api/snapshot/[ticker]">) {
+export async function GET(req: Request, ctx: RouteContext<"/api/snapshot/[ticker]">) {
   const { ticker } = await ctx.params;
   const code = getNaverCode(ticker);
   const yahooTicker = code ? `${code}.KS` : ticker.toUpperCase();
+
+  // 헤더·사이드바에 이미 표시된 가격과 다른 값으로 PER 등이 계산되지 않도록,
+  // 페이지가 이미 확보한 canonical 가격이 있으면 그걸 우선 쓴다.
+  const priceParam = new URL(req.url).searchParams.get("price");
+  const canonicalPrice = priceParam ? parseFloat(priceParam) : null;
 
   try {
     const [q, summary] = await Promise.all([
@@ -24,11 +29,22 @@ export async function GET(_req: Request, ctx: RouteContext<"/api/snapshot/[ticke
     const fd = summary?.financialData ?? {};
     const ap = summary?.assetProfile ?? {};
 
-    // Yahoo가 trailingEps/trailingPE를 안 주는 종목은 순이익·발행주식수로 직접 계산한다.
+    const price = canonicalPrice && canonicalPrice > 0 ? canonicalPrice : q.regularMarketPrice;
+
+    // Yahoo가 trailingEps를 안 주는 종목은 순이익·발행주식수로 직접 계산한다.
     // 적자(EPS<=0) 종목은 PER을 표기하지 않는 관례를 따른다.
+    // PER·포워드PER·PBR은 Yahoo가 이미 계산해둔 비율(자기네 가격 스냅샷 기준) 대신
+    // "canonical 가격 ÷ 가격과 무관한 원 데이터(EPS 등)"로 다시 계산해, 화면에 실제
+    // 보이는 가격과 항상 정확히 들어맞게 한다. 원 데이터가 없으면 Yahoo 비율로 대체한다.
     const eps: number | null =
       ks.trailingEps ?? (ks.netIncomeToCommon != null && ks.sharesOutstanding ? ks.netIncomeToCommon / ks.sharesOutstanding : null);
-    const per: number | null = sd.trailingPE ?? (eps != null && eps > 0 && q.regularMarketPrice ? q.regularMarketPrice / eps : null);
+    const per: number | null = eps != null && eps > 0 && price ? price / eps : sd.trailingPE ?? null;
+
+    const forwardEps: number | null = ks.forwardEps ?? null;
+    const forwardPer: number | null = forwardEps != null && forwardEps > 0 && price ? price / forwardEps : ks.forwardPE ?? null;
+
+    const bookValue: number | null = ks.bookValue ?? null;
+    const pbr: number | null = bookValue != null && bookValue > 0 && price ? price / bookValue : ks.priceToBook ?? null;
 
     const dividendYield: number =
       (sd.dividendYield ?? sd.trailingAnnualDividendYield ?? 0) * 100;
@@ -38,8 +54,8 @@ export async function GET(_req: Request, ctx: RouteContext<"/api/snapshot/[ticke
       currency: q.currency ?? "USD",
       // 밸류에이션
       per,
-      forwardPer: ks.forwardPE ?? null,
-      pbr: ks.priceToBook ?? null,
+      forwardPer,
+      pbr,
       psr: ks.priceToSalesTrailing12Months ?? sd.priceToSalesTrailing12Months ?? null,
       evEbitda: ks.enterpriseToEbitda ?? null,
       // 수익성

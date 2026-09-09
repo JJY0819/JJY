@@ -84,7 +84,7 @@ export default async function StockPage(props: PageProps<"/stock/[ticker]">) {
               </div>
 
               {/* ── 옵션 / Max Pain (미국 종목만 데이터 존재 시 표시) ── */}
-              <MaxPainCard ticker={decodedTicker} />
+              <MaxPainCard ticker={decodedTicker} canonicalPrice={quote?.price ?? null} />
 
               {/* ── 한눈에 요약 (52주 위치·애널 컨센서스·실적·평가) ── */}
               {quote && (
@@ -105,7 +105,13 @@ export default async function StockPage(props: PageProps<"/stock/[ticker]">) {
               </div>
 
               {/* ── 재무 스냅샷 (밸류에이션·수익성·성장&안정성·배당·원시재무·거래정보) ── */}
-              <FinancialSnapshot ticker={decodedTicker} />
+              <FinancialSnapshot
+                ticker={decodedTicker}
+                canonicalPreviousClose={quote?.previousClose ?? null}
+                canonicalVolume={quote?.volume ?? null}
+                canonicalMarketCap={quote?.marketCap ?? null}
+                canonicalPrice={quote?.price ?? null}
+              />
 
               {/* ── 재무제표 + 뉴스 ── */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">

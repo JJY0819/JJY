@@ -56,11 +56,17 @@ interface YahooFundamentals {
   netMargin: number | null;
   operatingMargin: number | null;
   revenueGrowth: number | null;
+  volume: number | null;
 }
 
 // 토스/공공데이터 API는 시세만 제공하고 PER·목표주가 등 펀더멘털 지표가 없어
 // Yahoo Finance에서 보강한다. 실패해도 시세 자체는 이미 확보했으므로 null로 채운다.
-async function getYahooFundamentals(yahooTicker: string): Promise<YahooFundamentals | null> {
+//
+// canonicalPrice(화면에 실제 표시되는 시세, 보통 토스 실시간가)가 주어지면 PER·포워드PER·PBR을
+// Yahoo가 이미 계산해둔 비율(자기네 가격 스냅샷 기준이라 화면 가격과 미세하게 어긋날 수 있음) 대신
+// "canonicalPrice ÷ (EPS·BPS 등 가격과 무관한 원 데이터)"로 직접 재계산해서, 화면에 보이는
+// 가격과 항상 정확히 들어맞게 만든다. 원 데이터(EPS 등)가 없으면 Yahoo 비율로 대체한다.
+async function getYahooFundamentals(yahooTicker: string, canonicalPrice?: number | null): Promise<YahooFundamentals | null> {
   try {
     const [q, summary] = await Promise.all([
       yf.quote(yahooTicker),
@@ -76,19 +82,27 @@ async function getYahooFundamentals(yahooTicker: string): Promise<YahooFundament
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const fd = (summary as any)?.financialData ?? {};
 
-    // 일부 종목(특히 국내 상장사)은 Yahoo가 trailingEps/trailingPE를 아예 안 주는 경우가 있어
+    const price = canonicalPrice && canonicalPrice > 0 ? canonicalPrice : q.regularMarketPrice;
+
+    // 일부 종목(특히 국내 상장사)은 Yahoo가 trailingEps를 아예 안 주는 경우가 있어
     // 순이익(netIncomeToCommon)·발행주식수로 직접 계산해 채운다.
     // 단, 적자(EPS<=0) 종목은 PER 자체를 표기하지 않는 관례를 따른다 (음수 PER은 의미가 없음).
     const eps =
       ks.trailingEps ?? (ks.netIncomeToCommon != null && ks.sharesOutstanding ? ks.netIncomeToCommon / ks.sharesOutstanding : null);
-    const per = sd.trailingPE ?? (eps != null && eps > 0 && q.regularMarketPrice ? q.regularMarketPrice / eps : null);
+    const per = eps != null && eps > 0 && price ? price / eps : sd.trailingPE ?? null;
+
+    const forwardEps = ks.forwardEps ?? null;
+    const forwardPer = forwardEps != null && forwardEps > 0 && price ? price / forwardEps : ks.forwardPE ?? null;
+
+    const bookValue = ks.bookValue ?? null;
+    const pbr = bookValue != null && bookValue > 0 && price ? price / bookValue : ks.priceToBook ?? null;
 
     return {
       week52High: q.fiftyTwoWeekHigh ?? null,
       week52Low: q.fiftyTwoWeekLow ?? null,
       per: per ?? null,
-      forwardPer: ks.forwardPE ?? null,
-      pbr: ks.priceToBook ?? null,
+      forwardPer: forwardPer ?? null,
+      pbr: pbr ?? null,
       eps: eps ?? null,
       dividendYield: sd.dividendYield != null ? sd.dividendYield * 100 : null,
       targetMeanPrice: fd.targetMeanPrice ?? null,
@@ -101,6 +115,7 @@ async function getYahooFundamentals(yahooTicker: string): Promise<YahooFundament
       netMargin: fd.profitMargins != null ? fd.profitMargins * 100 : null,
       operatingMargin: fd.operatingMargins != null ? fd.operatingMargins * 100 : null,
       revenueGrowth: fd.revenueGrowth != null ? fd.revenueGrowth * 100 : null,
+      volume: q.regularMarketVolume ?? null,
     };
   } catch {
     return null;
@@ -119,7 +134,7 @@ export async function getQuoteData(ticker: string): Promise<QuoteData | null> {
     try {
       const q = await tossQuote(code ?? ticker.toUpperCase());
       if (q) {
-        const extra = await getYahooFundamentals(yahooTicker);
+        const extra = await getYahooFundamentals(yahooTicker, q.price);
         return {
           symbol: q.symbol,
           name: q.name,
@@ -130,7 +145,10 @@ export async function getQuoteData(ticker: string): Promise<QuoteData | null> {
           sharesOutstanding: q.sharesOutstanding,
           week52High: extra?.week52High ?? null,
           week52Low: extra?.week52Low ?? null,
-          volume: q.volume,
+          // 토스의 당일 캔들은 한국시간 기준으로 날짜가 먼저 넘어가버려서, 미국 장이
+          // 갓 열린 시점엔 "오늘 거래량"이 실제보다 훨씬 작게(직전 세션 대비 1/100 이하)
+          // 잡히는 경우가 있다. 통상적인 "당일 누적 거래량" 의미에 맞게 Yahoo 값을 우선한다.
+          volume: extra?.volume ?? q.volume,
           currency: q.currency,
           exchange: q.market,
           marketState: "REGULAR",
@@ -162,7 +180,8 @@ export async function getQuoteData(ticker: string): Promise<QuoteData | null> {
     try {
       const item = await datagoQuote(code);
       if (item) {
-        const extra = await getYahooFundamentals(yahooTicker);
+        const canonicalPrice = parseInt(item.clpr ?? "0");
+        const extra = await getYahooFundamentals(yahooTicker, canonicalPrice);
         return {
           symbol: ticker.toUpperCase(),
           name: item.itmsNm ?? ticker,

@@ -49,7 +49,7 @@ function topByOI(contracts: Contract[], n: number) {
     .map((c) => ({ strike: c.strike, oi: c.openInterest ?? 0 }));
 }
 
-export async function GET(_req: Request, ctx: RouteContext<"/api/options/[ticker]">) {
+export async function GET(req: Request, ctx: RouteContext<"/api/options/[ticker]">) {
   const { ticker } = await ctx.params;
 
   // 국내 종목은 Yahoo에 옵션 체인이 없다.
@@ -58,10 +58,14 @@ export async function GET(_req: Request, ctx: RouteContext<"/api/options/[ticker
   }
 
   const symbol = ticker.toUpperCase();
+  // 페이지 헤더 등 다른 곳에 이미 표시된 가격과 다른 값이 나오지 않도록,
+  // 호출 측(페이지)이 이미 확보한 canonical 가격을 우선 사용한다.
+  const priceParam = new URL(req.url).searchParams.get("price");
+  const canonicalPrice = priceParam ? parseFloat(priceParam) : null;
 
   try {
     const base = await yf.options(symbol);
-    const price = base.quote?.regularMarketPrice ?? 0;
+    const price = canonicalPrice && canonicalPrice > 0 ? canonicalPrice : base.quote?.regularMarketPrice ?? 0;
     const candidateDates = (base.expirationDates ?? []).slice(0, 10);
 
     const fetched = await Promise.all(

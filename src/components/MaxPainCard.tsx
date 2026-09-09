@@ -46,18 +46,26 @@ function fmtPrice(v: number): string {
   return `$${v.toFixed(2)}`;
 }
 
-export default function MaxPainCard({ ticker }: { ticker: string }) {
+interface Props {
+  ticker: string;
+  // 헤더에 이미 표시된 가격과 동떨어진 값이 "현재가"로 뜨는 일이 없도록,
+  // 페이지가 이미 확보한 시세를 넘겨주면 그걸 기준으로 계산한다.
+  canonicalPrice?: number | null;
+}
+
+export default function MaxPainCard({ ticker, canonicalPrice }: Props) {
   const [data, setData] = useState<OptionsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [showExplain, setShowExplain] = useState(false);
 
   useEffect(() => {
-    fetch(`/api/options/${encodeURIComponent(ticker)}`)
+    const qs = canonicalPrice ? `?price=${canonicalPrice}` : "";
+    fetch(`/api/options/${encodeURIComponent(ticker)}${qs}`)
       .then((r) => r.json())
       .then(setData)
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [ticker]);
+  }, [ticker, canonicalPrice]);
 
   if (loading) {
     return <div className="bg-slate-900 rounded-xl p-5 shadow-sm h-40 animate-pulse mb-6" />;

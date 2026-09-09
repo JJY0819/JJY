@@ -61,8 +61,10 @@ export function rsi(data: OHLCV[], period = 14): LinePoint[] {
   avgGain /= period;
   avgLoss /= period;
 
-  const rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
-  result.push({ time: data[period].time, value: 100 - 100 / (1 + rs) });
+  // 하락이 하나도 없으면(avgLoss=0) RS는 수학적으로 무한대이므로 RSI는 정확히 100이다.
+  // rs를 임의의 큰 수(예: 100)로 대신하면 100-100/101≈99.01이 되어 미세하게 틀리게 된다.
+  const firstRsi = avgLoss === 0 ? 100 : avgGain === 0 ? 0 : 100 - 100 / (1 + avgGain / avgLoss);
+  result.push({ time: data[period].time, value: firstRsi });
 
   for (let i = period + 1; i < data.length; i++) {
     const diff = data[i].close - data[i - 1].close;
@@ -70,8 +72,8 @@ export function rsi(data: OHLCV[], period = 14): LinePoint[] {
     const loss = diff < 0 ? Math.abs(diff) : 0;
     avgGain = (avgGain * (period - 1) + gain) / period;
     avgLoss = (avgLoss * (period - 1) + loss) / period;
-    const rsVal = avgLoss === 0 ? 100 : avgGain / avgLoss;
-    result.push({ time: data[i].time, value: 100 - 100 / (1 + rsVal) });
+    const rsiVal = avgLoss === 0 ? 100 : avgGain === 0 ? 0 : 100 - 100 / (1 + avgGain / avgLoss);
+    result.push({ time: data[i].time, value: rsiVal });
   }
 
   return result;

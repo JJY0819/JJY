@@ -124,7 +124,23 @@ function DetailRow({ label, value, tone: t }: { label: string; value: string; to
   );
 }
 
-export default function FinancialSnapshot({ ticker }: { ticker: string }) {
+interface Props {
+  ticker: string;
+  // 헤더/사이드바와 같은 화면에 동시에 보이는 값들이라, 소스가 갈려서 서로 다른
+  // 숫자가 찍히는 일이 없도록 페이지가 이미 확보한 값(canonical)을 우선 사용한다.
+  canonicalPreviousClose?: number | null;
+  canonicalVolume?: number | null;
+  canonicalMarketCap?: number | null;
+  canonicalPrice?: number | null;
+}
+
+export default function FinancialSnapshot({
+  ticker,
+  canonicalPreviousClose,
+  canonicalVolume,
+  canonicalMarketCap,
+  canonicalPrice,
+}: Props) {
   const [data, setData] = useState<SnapshotData | null>(null);
   const [openValuation, setOpenValuation] = useState(true);
   const [openProfitability, setOpenProfitability] = useState(true);
@@ -134,12 +150,13 @@ export default function FinancialSnapshot({ ticker }: { ticker: string }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch(`/api/snapshot/${encodeURIComponent(ticker)}`)
+    const qs = canonicalPrice ? `?price=${canonicalPrice}` : "";
+    fetch(`/api/snapshot/${encodeURIComponent(ticker)}${qs}`)
       .then((r) => r.json())
       .then(setData)
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [ticker]);
+  }, [ticker, canonicalPrice]);
 
   if (loading) {
     return (
@@ -153,6 +170,9 @@ export default function FinancialSnapshot({ ticker }: { ticker: string }) {
 
   if (!data?.available) return null;
   const cur = data.currency;
+  const previousClose = canonicalPreviousClose ?? data.previousClose;
+  const volume = canonicalVolume ?? data.volume;
+  const marketCap = canonicalMarketCap ?? data.marketCap;
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
@@ -279,24 +299,24 @@ export default function FinancialSnapshot({ ticker }: { ticker: string }) {
         <div className="grid grid-cols-3 gap-2">
           <div>
             <p className="text-slate-400 text-xs mb-1">전일종가</p>
-            <ValueText value={data.previousClose != null ? fmtMoney(data.previousClose, cur) : "—"} />
+            <ValueText value={previousClose != null ? fmtMoney(previousClose, cur) : "—"} />
           </div>
           <div>
             <p className="text-slate-400 text-xs mb-1">거래량</p>
-            <ValueText value={fmtVolume(data.volume, cur)} />
+            <ValueText value={fmtVolume(volume, cur)} />
           </div>
           <div>
             <p className="text-slate-400 text-xs mb-1">시가총액</p>
-            <ValueText value={fmtMoney(data.marketCap, cur)} />
+            <ValueText value={fmtMoney(marketCap, cur)} />
           </div>
         </div>
         <DetailToggle open={openTrading} onToggle={() => setOpenTrading((v) => !v)} />
         {openTrading && (
           <div>
-            <DetailRow label="전일 종가" value={data.previousClose != null ? fmtMoney(data.previousClose, cur) : "—"} />
-            <DetailRow label="거래량" value={fmtVolume(data.volume, cur)} />
+            <DetailRow label="전일 종가" value={previousClose != null ? fmtMoney(previousClose, cur) : "—"} />
+            <DetailRow label="거래량" value={fmtVolume(volume, cur)} />
             <DetailRow label="평균 거래량" value={fmtVolume(data.averageVolume, cur)} />
-            <DetailRow label="시가총액" value={fmtMoney(data.marketCap, cur)} />
+            <DetailRow label="시가총액" value={fmtMoney(marketCap, cur)} />
             <DetailRow label="외국인 지분율" value="—" />
             <DetailRow label="직원 수" value={data.employees != null ? data.employees.toLocaleString() : "—"} />
           </div>
