@@ -9,6 +9,7 @@ import CompanyProfile from "@/components/CompanyProfile";
 import StockHeaderCard from "@/components/StockHeaderCard";
 import AtAGlanceSummary from "@/components/AtAGlanceSummary";
 import KeyMetricsCard from "@/components/KeyMetricsCard";
+import MaxPainCard from "@/components/MaxPainCard";
 import RecordRecentView from "@/components/RecordRecentView";
 import { CurrencyProvider } from "@/contexts/CurrencyContext";
 import { isKoreanStock } from "@/lib/naver";
@@ -81,6 +82,9 @@ export default async function StockPage(props: PageProps<"/stock/[ticker]">) {
               <div className="mb-6">
                 <StockChart ticker={decodedTicker} />
               </div>
+
+              {/* ── 옵션 / Max Pain (미국 종목만 데이터 존재 시 표시) ── */}
+              <MaxPainCard ticker={decodedTicker} />
 
               {/* ── 한눈에 요약 (52주 위치·애널 컨센서스·실적·평가) ── */}
               {quote && (
