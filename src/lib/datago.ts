@@ -51,7 +51,7 @@ export async function datagoQuote(code: string): Promise<DatagoItem | null> {
         numOfRows: "1",
         pageNo: "1",
         basDt: toYYYYMMDD(d),
-        srtnCd: code,
+        likeSrtnCd: code,
       });
       if (items.length > 0) return items[0];
     } catch {
@@ -99,7 +99,7 @@ export async function datagoChart(
       pageNo: String(page),
       beginBasDt: startDate,
       endBasDt: endDate,
-      srtnCd: code,
+      likeSrtnCd: code,
     });
 
     if (items.length === 0) break;
@@ -112,10 +112,46 @@ export async function datagoChart(
   return all.sort((a, b) => a.time - b.time);
 }
 
+// ── 시가총액 상위 N종목 (당일 전체 종목 덤프에서 정렬) ────────────────
+export interface DatagoTopStock {
+  code: string;
+  name: string;
+  market: string;
+  marketCap: number;
+}
+
+export async function datagoTopByMarketCap(n: number): Promise<DatagoTopStock[]> {
+  for (let i = 0; i <= 5; i++) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    try {
+      const items = await datagoGet("getStockPriceInfo", {
+        numOfRows: "3000",
+        pageNo: "1",
+        basDt: toYYYYMMDD(d),
+      });
+      if (items.length === 0) continue;
+      return items
+        .map((it) => ({
+          code: it.srtnCd ?? "",
+          name: it.itmsNm ?? "",
+          market: it.mrktCtg ?? "",
+          marketCap: parseFloat(it.mrktTotAmt ?? "0") || 0,
+        }))
+        .filter((s) => s.code && s.marketCap > 0)
+        .sort((a, b) => b.marketCap - a.marketCap)
+        .slice(0, n);
+    } catch {
+      // 해당 일자 데이터 없음, 다음 날로 재시도
+    }
+  }
+  return [];
+}
+
 // 기간 → 시작일 계산
 export function getPeriodStart(period: string): string {
   const days: Record<string, number> = {
-    "1W": 10, "1M": 35, "3M": 95, "6M": 190, "1Y": 380, "5Y": 1900,
+    "1W": 10, "1M": 35, "3M": 95, "6M": 190, "1Y": 380, "2Y": 760, "5Y": 1900,
   };
   const d = new Date();
   d.setDate(d.getDate() - (days[period] ?? 380));

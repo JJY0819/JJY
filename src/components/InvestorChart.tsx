@@ -18,33 +18,35 @@ interface InvestorData {
 
 type Category = "foreign" | "institute" | "individual";
 
-const CATS: { key: Category; label: string; color: string; bg: string }[] = [
-  { key: "foreign",    label: "외국인", color: "#3b82f6", bg: "bg-blue-500"   },
-  { key: "institute",  label: "기관",   color: "#8b5cf6", bg: "bg-violet-500" },
-  { key: "individual", label: "개인",   color: "#f59e0b", bg: "bg-amber-500"  },
+const CATS: { key: Category; label: string }[] = [
+  { key: "foreign",    label: "외국인" },
+  { key: "institute",  label: "기관"   },
+  { key: "individual", label: "개인"   },
 ];
 
+const PERIODS = ["1D", "1W", "1M", "3M", "6M", "1Y"] as const;
+const PERIOD_LABEL: Record<(typeof PERIODS)[number], string> = {
+  "1D": "1일", "1W": "1주일", "1M": "1개월", "3M": "3개월", "6M": "6개월", "1Y": "1년",
+};
+
 function fmtShares(n: number): string {
-  const abs = Math.abs(n);
-  if (abs >= 1e6) return `${(abs / 1e6).toFixed(1)}백만`;
-  if (abs >= 1e4) return `${Math.round(abs / 1e4)}만`;
-  return abs.toLocaleString();
+  return Math.abs(n).toLocaleString();
 }
 
-function SummaryBar({ label, bg, value, max }: { label: string; bg: string; value: number; max: number }) {
+function SummaryBar({ label, value, max }: { label: string; value: number; max: number }) {
   const pct = max > 0 ? Math.min(Math.abs(value) / max * 100, 100) : 0;
   const isUp = value >= 0;
   return (
     <div>
       <div className="flex justify-between text-xs mb-0.5">
         <span className="text-gray-600 font-medium">{label}</span>
-        <span className={`font-semibold tabular-nums ${isUp ? "text-emerald-600" : "text-red-600"}`}>
+        <span className={`font-semibold tabular-nums ${isUp ? "text-red-600" : "text-blue-600"}`}>
           {isUp ? "+" : "-"}{fmtShares(value)}주
         </span>
       </div>
       <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
         <div
-          className={`h-full ${isUp ? bg : "bg-red-400"} rounded-full`}
+          className={`h-full ${isUp ? "bg-red-300" : "bg-blue-300"} rounded-full`}
           style={{ width: `${pct}%` }}
         />
       </div>
@@ -56,15 +58,16 @@ export default function InvestorChart({ ticker }: { ticker: string }) {
   const [data, setData] = useState<InvestorData | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"chart" | "summary">("chart");
+  const [period, setPeriod] = useState<(typeof PERIODS)[number]>("1M");
 
   useEffect(() => {
     setLoading(true);
-    fetch(`/api/investor/${encodeURIComponent(ticker)}`)
+    fetch(`/api/investor/${encodeURIComponent(ticker)}?period=${period}`)
       .then((r) => r.json())
       .then(setData)
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [ticker]);
+  }, [ticker, period]);
 
   const trend = data?.trend ?? [];
   const total = data?.total;
@@ -79,8 +82,8 @@ export default function InvestorChart({ ticker }: { ticker: string }) {
 
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-gray-900 font-semibold">투자자 현황 (최근 20거래일)</h3>
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+        <h3 className="text-gray-900 font-semibold">투자자 현황 ({PERIOD_LABEL[period]})</h3>
         {data?.available && (
           <div className="flex gap-1">
             {(["chart", "summary"] as const).map((t) => (
@@ -98,6 +101,24 @@ export default function InvestorChart({ ticker }: { ticker: string }) {
         )}
       </div>
 
+      <div className="flex gap-2 flex-wrap mb-4">
+        {PERIODS.map((p) => (
+          <button
+            key={p}
+            onClick={() => setPeriod(p)}
+            className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+              period === p ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+            }`}
+          >
+            {PERIOD_LABEL[p]}
+          </button>
+        ))}
+      </div>
+
+      <p className="text-xs text-gray-400 mb-3">
+        개인 순매매량은 거래소가 별도 제공하지 않아 -(외국인+기관)으로 추정한 값입니다.
+      </p>
+
       {loading ? (
         <div className="flex items-center justify-center h-32">
           <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
@@ -105,47 +126,16 @@ export default function InvestorChart({ ticker }: { ticker: string }) {
       ) : !data?.available ? (
         <p className="text-gray-400 text-sm text-center py-8">{data?.message}</p>
       ) : activeTab === "chart" ? (
-        /* ── 일별 바차트 ── */
-        <div>
-          {/* 범례 */}
-          <div className="flex gap-4 mb-3">
-            {CATS.map((c) => (
-              <span key={c.key} className="flex items-center gap-1 text-xs text-gray-500">
-                <span className={`inline-block w-3 h-3 rounded-sm ${c.bg}`} />
-                {c.label}
-              </span>
-            ))}
-          </div>
-
-          {/* 바 차트 */}
-          <div className="overflow-x-auto">
-            <div className="flex items-end gap-1" style={{ minWidth: trend.length * 28 }}>
-              {trend.map((row) => (
-                <div key={row.date} className="flex flex-col items-center gap-0.5" style={{ width: 24 }}>
-                  {CATS.map((cat) => {
-                    const val = row[cat.key];
-                    const h = maxVal > 0 ? Math.round(Math.abs(val) / maxVal * 48) : 0;
-                    const isUp = val >= 0;
-                    return (
-                      <div
-                        key={cat.key}
-                        title={`${cat.label}: ${val >= 0 ? "+" : ""}${fmtShares(val)}주`}
-                        className={`w-full rounded-sm ${isUp ? cat.bg : "bg-red-400"} opacity-80`}
-                        style={{ height: h, minHeight: 2 }}
-                      />
-                    );
-                  })}
-                  <span className="text-gray-300 text-[9px] rotate-90 mt-1 origin-left" style={{ writingMode: "horizontal-tb" }}>
-                    {row.date.slice(5)}
-                  </span>
-                </div>
+        /* ── 일별 추이 (날짜별 막대) ── */
+        <div className="max-h-[480px] overflow-y-auto pr-1 space-y-5">
+          {[...trend].reverse().map((row) => (
+            <div key={row.date} className="space-y-3 pb-3 border-b border-gray-100 last:border-0">
+              <p className="text-xs text-gray-400">{row.date}</p>
+              {CATS.map((cat) => (
+                <SummaryBar key={cat.key} label={cat.label} value={row[cat.key]} max={maxVal} />
               ))}
             </div>
-          </div>
-          <div className="flex justify-between text-xs text-gray-400 mt-1">
-            <span>매도 ↓</span>
-            <span>↑ 매수</span>
-          </div>
+          ))}
         </div>
       ) : (
         /* ── 누적 합계 ── */
@@ -154,12 +144,11 @@ export default function InvestorChart({ ticker }: { ticker: string }) {
             <SummaryBar
               key={cat.key}
               label={cat.label}
-              bg={cat.bg}
               value={total[cat.key]}
               max={maxTotal}
             />
           ))}
-          <p className="text-xs text-gray-400 pt-1">최근 20거래일 누적 순매수 수량</p>
+          <p className="text-xs text-gray-400 pt-1">{PERIOD_LABEL[period]} 누적 순매수 수량</p>
         </div>
       )}
     </div>

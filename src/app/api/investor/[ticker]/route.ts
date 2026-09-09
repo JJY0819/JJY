@@ -1,33 +1,19 @@
-import { getNaverCode, naverFetch } from "@/lib/naver";
+import { NextRequest } from "next/server";
+import { getNaverCode, naverFrgnTrend } from "@/lib/naver";
 
-function n(val: unknown): number {
-  if (typeof val === "number") return val;
-  if (typeof val === "string") return parseInt(val.replace(/,/g, "")) || 0;
-  return 0;
-}
+const PERIOD_DAYS: Record<string, number> = {
+  "1D": 1,
+  "1W": 5,
+  "1M": 21,
+  "3M": 63,
+  "6M": 126,
+  "1Y": 252,
+};
 
-interface NaverInvestor {
-  foreignerCurrentBalanceRate?: number | string;
-  foreignerNetBuyQuantity?: number | string;
-  instituteNetBuyQuantity?: number | string;
-  individualNetBuyQuantity?: number | string;
-  accumulatedForeignerNetBuyQuantity?: number | string;
-  accumulatedInstituteNetBuyQuantity?: number | string;
-  accumulatedIndividualNetBuyQuantity?: number | string;
-}
-
-// Naver Finance 투자자 추이 (일별 시계열)
-interface NaverTrendItem {
-  date?: string;
-  foreigner?: { netBuyQuantity?: number };
-  institute?: { netBuyQuantity?: number };
-  individual?: { netBuyQuantity?: number };
-  foreignerNetBuyQuantity?: number | string;
-  instituteNetBuyQuantity?: number | string;
-  individualNetBuyQuantity?: number | string;
-}
-
-export async function GET(_req: Request, ctx: RouteContext<"/api/investor/[ticker]">) {
+export async function GET(
+  request: NextRequest,
+  ctx: RouteContext<"/api/investor/[ticker]">
+) {
   const { ticker } = await ctx.params;
   const code = getNaverCode(ticker);
 
@@ -35,44 +21,37 @@ export async function GET(_req: Request, ctx: RouteContext<"/api/investor/[ticke
     return Response.json({ available: false, message: "한국 주식만 지원됩니다." });
   }
 
+  const period = request.nextUrl.searchParams.get("period") ?? "1M";
+  const days = PERIOD_DAYS[period] ?? PERIOD_DAYS["1M"];
+
   try {
-    // 1차 시도: 투자자 요약
-    const summary = await naverFetch<NaverInvestor>(
-      `https://m.stock.naver.com/api/stock/${code}/investor`
-    );
-
-    const foreignerNet = n(summary.foreignerNetBuyQuantity ?? summary.accumulatedForeignerNetBuyQuantity ?? 0);
-    const instituteNet = n(summary.instituteNetBuyQuantity ?? summary.accumulatedInstituteNetBuyQuantity ?? 0);
-    const individualNet = n(summary.individualNetBuyQuantity ?? summary.accumulatedIndividualNetBuyQuantity ?? 0);
-    const holdingRate = n(summary.foreignerCurrentBalanceRate ?? 0);
-
-    // 2차 시도: 일별 추이 (있으면 추가 반환)
-    let trend: { date: string; foreign: number; institute: number; individual: number }[] = [];
-    try {
-      const trendData = await naverFetch<NaverTrendItem[]>(
-        `https://m.stock.naver.com/api/stock/${code}/investorTrend`
+    const rows = await naverFrgnTrend(code, days);
+    if (rows.length === 0) {
+      return Response.json(
+        { available: false, message: "투자자 현황을 불러올 수 없습니다." },
+        { status: 500 }
       );
-      if (Array.isArray(trendData)) {
-        trend = trendData.slice(0, 20).map((r) => ({
-          date: r.date ?? "",
-          foreign: n(r.foreigner?.netBuyQuantity ?? r.foreignerNetBuyQuantity ?? 0),
-          institute: n(r.institute?.netBuyQuantity ?? r.instituteNetBuyQuantity ?? 0),
-          individual: n(r.individual?.netBuyQuantity ?? r.individualNetBuyQuantity ?? 0),
-        }));
-      }
-    } catch {
-      // 추이 데이터 없어도 요약만 반환
     }
 
-    return Response.json({
-      available: true,
-      foreignerNet,
-      instituteNet,
-      individualNet,
-      holdingRate,
-      trend,
-      total: { foreign: foreignerNet, institute: instituteNet, individual: individualNet },
-    });
+    // rows는 최신순 → 차트 표시를 위해 날짜 오름차순으로 정렬
+    // 개인 순매매량은 별도 제공되지 않아 -(외국인+기관)으로 추정한다
+    const trend = [...rows].reverse().map((r) => ({
+      date: r.date,
+      foreign: r.foreign,
+      institute: r.institute,
+      individual: -(r.foreign + r.institute),
+    }));
+
+    const total = trend.reduce(
+      (acc, r) => ({
+        foreign: acc.foreign + r.foreign,
+        institute: acc.institute + r.institute,
+        individual: acc.individual + r.individual,
+      }),
+      { foreign: 0, institute: 0, individual: 0 }
+    );
+
+    return Response.json({ available: true, period, trend, total });
   } catch (e) {
     console.error("[investor] Naver 실패:", e);
     return Response.json(

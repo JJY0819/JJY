@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist_Mono, Gowun_Dodum } from "next/font/google";
 import "./globals.css";
 import ExchangeRateBar from "@/components/ExchangeRateBar";
+import { WatchlistProvider } from "@/contexts/WatchlistContext";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const gowunDodum = Gowun_Dodum({
+  variable: "--font-gowun-dodum",
   subsets: ["latin"],
+  weight: "400",
 });
 
 const geistMono = Geist_Mono({
@@ -24,10 +26,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="ko" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
+    <html lang="ko" className={`${gowunDodum.variable} ${geistMono.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col bg-gray-50">
-        <ExchangeRateBar />
-        {children}
+        <WatchlistProvider>
+          <ExchangeRateBar />
+          {children}
+        </WatchlistProvider>
       </body>
     </html>
   );

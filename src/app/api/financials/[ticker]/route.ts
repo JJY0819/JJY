@@ -1,4 +1,5 @@
 import { getNaverCode } from "@/lib/naver";
+import { dartAvailable, dartFinancials } from "@/lib/dart";
 
 // ── Yahoo Finance 공개 timeseries API (period 파라미터 지원) ──────────────
 // quoteSummary의 fundamentalsTimeSeries 모듈은 이 버전에서 미지원
@@ -74,6 +75,23 @@ function parseTimeSeries(data: any) {
 export async function GET(_req: Request, ctx: RouteContext<"/api/financials/[ticker]">) {
   const { ticker } = await ctx.params;
   const code = getNaverCode(ticker);
+
+  // ── 한국 종목: DART(전자공시시스템) — 다년치 분기 재무제표 제공 ──────────
+  if (code && dartAvailable()) {
+    try {
+      const result = await dartFinancials(code);
+      if (result && (result.income.length > 0 || result.balance.length > 0)) {
+        return Response.json({
+          incomeStatements: result.income,
+          balanceSheets: result.balance,
+          quarterly: true,
+        });
+      }
+    } catch (e) {
+      console.error("[financials] DART 실패, Yahoo로 전환:", e);
+    }
+  }
+
   const yahooTicker = code ? `${code}.KS` : ticker;
 
   // 손익 + 재무상태 병렬 요청
